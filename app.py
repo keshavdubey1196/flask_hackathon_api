@@ -46,31 +46,6 @@ def getInfo():
     return jsonify(required_data, 200)
 
 
-@app.route('/api/getInfoDetailed/<string:name>/<int:id>', strict_slashes=False, methods=["GET"])
-def getInfoDetailed(name, id):
-    user = User.query.filter_by(name=name, id=id).first()
-
-    if user is None:
-        return jsonify({"error": "This admin does not exist"}), 404
-
-    if not user.is_admin:
-        return jsonify({"error": "You are not authorized"}), 401
-
-    users = User.query.all()
-    user_list = []
-    for user in users:
-        user_data = {
-            "id": user.id,
-            "name": user.name,
-            "email": user.email,
-            "is_admin": user.is_admin,
-        }
-        user_list.append(user_data)
-
-    if user_list:
-        return jsonify(user_list), 200
-
-
 @app.route('/api/users', methods=["GET"])
 def getUsers():
     users = User.query.all()
@@ -86,6 +61,20 @@ def getUsers():
         user_list.append(user_data)
 
     return jsonify(user_list, 200)
+
+
+@app.route('/api/users/<int:user_id>', methods=["GET"])
+def getUserById(user_id):
+    user = User.query.filter_by(id=user_id).first()
+    if user is None:
+        return jsonify({"error": "user does not exists"}, 404)
+
+    user_data = {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+    }
+    return jsonify(user_data, 200)
 
 
 @app.route('/api/users', methods=["POST"])
