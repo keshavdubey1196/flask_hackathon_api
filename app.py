@@ -6,6 +6,7 @@ import os
 from flask_migrate import Migrate
 from models import User
 import bcrypt
+import ast
 
 
 load_dotenv()
@@ -23,6 +24,7 @@ migrate = Migrate(app, db)
 init_db(app)
 
 
+@app.route('/', methods=['GET'])
 @app.route('/api/getinfo', methods=["GET"])
 def getInfo():
     user = {"user":
@@ -42,6 +44,31 @@ def getInfo():
                   }
     required_data = [user, submission]
     return jsonify(required_data, 200)
+
+
+@app.route('/api/getInfoDetailed/<string:name>/<int:id>', strict_slashes=False, methods=["GET"])
+def getInfoDetailed(name, id):
+    user = User.query.filter_by(name=name, id=id).first()
+
+    if user is None:
+        return jsonify({"error": "This admin does not exist"}), 404
+
+    if not user.is_admin:
+        return jsonify({"error": "You are not authorized"}), 401
+
+    users = User.query.all()
+    user_list = []
+    for user in users:
+        user_data = {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "is_admin": user.is_admin,
+        }
+        user_list.append(user_data)
+
+    if user_list:
+        return jsonify(user_list), 200
 
 
 @app.route('/api/users', methods=["GET"])
@@ -69,6 +96,13 @@ def addUser():
     name = data["name"]
     email = data["email"]
     password = data["password"]
+    is_admin_str = data.get('is_admin', "False")
+
+    # to safely convert is_admin_str to bool
+    try:
+        is_admin = ast.literal_eval(is_admin_str)
+    except (ValueError, SyntaxError):
+        return jsonify({"error": "Invalid value for is_admin"})
 
     # validating required fields
     if not name or not email or not password:
@@ -87,7 +121,8 @@ def addUser():
     # encrypt the password
     cipher_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
 
-    new_user = User(name=name, email=email, password=cipher_password)
+    new_user = User(name=name, email=email,
+                    password=cipher_password, is_admin=is_admin)
 
     db.session.add(new_user)
     db.session.commit()

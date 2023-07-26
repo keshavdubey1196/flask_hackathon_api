@@ -24,7 +24,7 @@ class User(db.Model):
     password = db.Column(db.String(200), unique=True, nullable=False)
     created_at = db.Column(
         db.DateTime(), default=datetime.utcnow)
-    id_admin = db.Column(db.Boolean(), default=False)
+    is_admin = db.Column(db.Boolean(), default=False, nullable=False)
 
     created_hackathons = db.relationship(
         'Hackathon', backref='creator', lazy=True)
