@@ -21,3 +21,99 @@ def getInfoDetailed(name, id):
 
     if user_list:
         return jsonify(user_list), 200
+
+
+
+@app.route('/', methods=['GET'])
+@app.route('/api/getinfo', methods=["GET"])
+def getInfo():
+    user = {"user":
+            {
+                "name": "required",
+                "email": "required",
+                "password": "required"
+            }
+            }
+    submission = {"submission":
+                  {
+                      "file": "default",
+                      "image": "if required",
+                      "user_id": "required",
+                      "hackathon_id": "required"
+                  }
+                  }
+    required_data = [user, submission]
+    return jsonify(required_data, 200)
+
+
+
+Many-to-many relationships are fairly common in many (ahem) applications, and this is to remind myself how to create them - I always seem to forget! These are known as has_many :through associations in the Ruby on Rails world, and are needed whenever any Object A can have many Object B records, and any Object B can also be associated with many Object A records.
+
+One real-world example would be an ecommerce site with database models for Users and Products - a User can have many Products through a secondary table (ie Orders), and a Product can be purchased by many Users through the same Orders table.
+
+In this case, the concept of an "order" which associates users with products is fairly well known - but in situations where this does not apply, it is common to name this secondary table as a combination of both bodels (ie "UserProducts" if the concept of "Orders" is not commonly known). 
+
+Here's how to define it in Flask / SQLAlchemy models.
+
+1. Define your User model
+This could look like:
+
+
+from sqlalchemy.orm import relationship
+
+class User(BaseModel):
+    __tablename__ = 'users'
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255))
+
+    # ... any other fields
+
+    create_dttm = db.Column(db.DateTime, server_default=db.func.current_timestamp())
+
+    products = relationship("Product", secondary="orders")
+
+2. Define the Product model
+
+from sqlalchemy.orm import relationship
+
+class Product(BaseModel):
+    __tablename__ = 'products'
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255))
+
+    # ... any other fields
+
+    create_dttm = db.Column(db.DateTime, default=datetime.utcnow)
+
+    users = relationship("User", secondary="orders")
+
+3. And finally, the association table
+
+from sqlalchemy.orm import relationship, backref
+
+class Order(BaseModel):
+    __tablename__ = 'orders'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'))
+
+    # ... any other fields
+
+    dttm = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = relationship(User, backref=backref("orders", cascade="all, delete-orphan"))
+    product = relationship(Product, backref=backref("orders", cascade="all, delete-orphan"))
+
+4. Usage
+Once these models have been defined and imported (and presumably your database tables have been created), you can use them easily:
+
+
+user = User.query.first()
+user.products  # List all products, eg [<productA>, <productB> ]
+user.orders    # List all orders, eg [<order1>, <order2>]
+user.orders[0].products  # List products from the first order
+
+p1 = Product.query.first()
+p1.users  # List all users who have bought this product, eg [<user1>, <user2>]

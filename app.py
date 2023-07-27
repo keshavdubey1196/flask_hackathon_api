@@ -4,9 +4,10 @@ from config import DATABASE_URI
 from dotenv import load_dotenv
 import os
 from flask_migrate import Migrate
-from models import User
+from models import User, Hackathon
 import bcrypt
 import ast
+from werkzeug.utils import secure_filename
 
 
 load_dotenv()
@@ -16,6 +17,17 @@ app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URI
 app.secret_key = os.environ['SECRET_KEY']
 
 
+UPLOAD_FOLDER = os.path.join(app.root_path, 'uploads')
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+ALLOWED_EXTENSIONS = set(['pdf', 'png', 'jpg', 'jpeg'])
+
+# create folders if they don't exist in project
+os.makedirs(os.path.join(UPLOAD_FOLDER, 'bg_imgs'), exist_ok=True)
+os.makedirs(os.path.join(UPLOAD_FOLDER, 'hakthon_imgs'), exist_ok=True)
+os.makedirs(os.path.join(UPLOAD_FOLDER, 'submission_imgs'), exist_ok=True)
+os.makedirs(os.path.join(UPLOAD_FOLDER, 'files'), exist_ok=True)
+
 # initializing flask-migrate with app and db
 migrate = Migrate(app, db)
 
@@ -24,26 +36,8 @@ migrate = Migrate(app, db)
 init_db(app)
 
 
-@app.route('/', methods=['GET'])
-@app.route('/api/getinfo', methods=["GET"])
-def getInfo():
-    user = {"user":
-            {
-                "name": "required",
-                "email": "required",
-                "password": "required"
-            }
-            }
-    submission = {"submission":
-                  {
-                      "file": "default",
-                      "image": "if required",
-                      "user_id": "required",
-                      "hackathon_id": "required"
-                  }
-                  }
-    required_data = [user, submission]
-    return jsonify(required_data, 200)
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 @app.route('/api/users', methods=["GET"])
@@ -120,6 +114,67 @@ def addUser():
         {
             "message": f"{new_user.name} with id = {new_user.id} added "
         }), 201
+
+
+@app.route('/api/addhackathon', methods=['POST'])
+def add_hackathon():
+    data = request.form
+    title = data['title']
+    description = data.get('description', 'OK')
+    submission_type = data.get('submission_type', 'File')
+    rewards = data.get('rewards', 500)
+    start_datetime = data['start_datetime']
+    end_datetime = data['end_datetime']
+    creator_id = data['creator_id']
+    bg_image = request.files['bg_image']
+    hakthon_img = request.files['hakthon_img']
+
+    # check if required data is provided
+    if not title or not start_datetime or not end_datetime or not bg_image or not hakthon_img:
+        data = {
+            "title": "required",
+            "start_datetime": "required",
+            "end_datetime": "required",
+            "bg_image": "required",
+            "hakthon_img": "required",
+            "creator_id": "required"
+        }
+        return jsonify(data, 400)
+
+    if bg_image.filename or hakthon_img.filename == "":
+        # print(bg_image.filename)
+        # print(hakthon_img.filename)
+        return jsonify({"error": "bg_image and hakthon_img must have filename"}), 400
+
+    allowed = allowed_file(bg_image.filename) and allowed_file(
+        hakthon_img.filename)
+
+    if allowed:
+        bg_image_filename = secure_filename(bg_image.filename)
+        hakthon_img_filename = secure_filename(hakthon_img.filename)
+        bg_image_path = os.path.join(
+            app.config['UPLOAD_FOLDER'], 'bg_imgs', bg_image_filename)
+        hakthon_img_path = os.path.join(
+            app.config['UPLOAD_FOLDER'], 'hakthon_imgs', hakthon_img_filename)
+        bg_image.save(bg_image_path)
+        hakthon_img.save(hakthon_img_path)
+
+        new_hackathon = Hackathon(
+            title=title,
+            description=description,
+            bg_image=bg_image_filename,
+            hakthon_img=hakthon_img_filename,
+            submission_type=submission_type,
+            rewards=rewards,
+            start_datetime=start_datetime,
+            end_datetime=end_datetime,
+            creator_id=creator_id
+        )
+        db.session.add(new_hackathon)
+        db.session.commit()
+        return jsonify({"message": f"{new_hackathon.title} added!"}), 201
+    else:
+        return jsonify({"error": "Allowed file types are pdf, png, jpeg"}), 400
 
 
 if __name__ == "__main__":
