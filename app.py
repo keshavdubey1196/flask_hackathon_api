@@ -1,4 +1,5 @@
-from flask import Flask, jsonify, request, url_for, send_from_directory
+from flask import Flask, jsonify, request, \
+    url_for, send_from_directory
 from models import db, init_db
 from config import DATABASE_URI
 from dotenv import load_dotenv
@@ -95,7 +96,8 @@ def getUserById(user_id):
 @app.route('/api/users', methods=["POST"])
 def addUser():
     data = request.get_json()
-
+    if not data:
+        return jsonify({"error": "Empty JSON object"}), 400
     # getting user data from JSON
     name = data["name"]
     email = data["email"]
@@ -140,6 +142,9 @@ def addUser():
 @app.route('/api/addhackathon', methods=['POST'])
 def add_hackathon():
     data = request.form
+    if not data:
+        return jsonify({"error": "Empty form sent"}), 400
+
     title = data['title']
     description = data.get('description', 'OK')
     submission_type = data.get('submission_type', 'File')
@@ -209,7 +214,7 @@ def add_hackathon():
 
 
 @app.route('/api/getuserhackathons/<int:user_id>', methods=['GET'])
-def get_user_hackathons(user_id):
+def get_user_created_hackathons(user_id):
     user = User.query.filter_by(id=user_id).first()
     hackathons_list = []
 
@@ -236,6 +241,9 @@ def get_user_hackathons(user_id):
 def to_participate():
     data = request.get_json()
 
+    if not data:
+        return jsonify({"error": "Empty JSON object"}), 400
+
     user_id = data["user_id"]
     hackathon_id = data["hackathon_id"]
 
@@ -250,9 +258,6 @@ def to_participate():
             {
                 "error": "User or Hackathon or both not Found! Wrong Id(s)."
             }), 400
-
-    # if hackathon is None:
-    #     return jsonify({"error": "Hackathon Not Found! Wrong Id."}), 400
 
     # check if user is admin
     if user.is_admin:
@@ -270,6 +275,87 @@ def to_participate():
 
     return jsonify(
         {"message": f"{user.name} enrolled in {hackathon.title}"}), 200
+
+
+@app.route('/api/enrolledHackathons', methods=["POST"])
+def get_enrolled_hackathons():
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"error": "Empty JSON object"}), 400
+
+    user_id = data['user_id']
+
+    if user_id != int(user_id):
+        return jsonify({"message": "Provide an integer user_id"}), 200
+
+    user = User.query.filter_by(id=user_id).first()
+
+    if not user:
+        return jsonify({"error": "User not found. Wrong id!"}), 400
+
+    if user.is_admin:
+        return jsonify({"error": "admins do not participate"}), 400
+
+    hackathons_list = []
+
+    for hackathon in user.participated_hackathons:
+        data = {
+            "id": hackathon.id,
+            "title": hackathon.title,
+            "description": hackathon.description,
+            "bg_image": f"/uploads/bg_imgs/{hackathon.bg_image}",
+            "hakthon_img": f"/uploads/hakthon_imgs/{hackathon.hakthon_img}",
+            "rewards": hackathon.rewards,
+            "created_at": hackathon.created_at,
+            "start_datetime": hackathon.start_datetime,
+            "end_datetime": hackathon.end_datetime, }
+        hackathons_list.append(data)
+
+    return jsonify(hackathons_list), 200
+
+
+@app.route('/api/unenroll', methods=['POST'])
+def unenroll():
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"error": "Empty JSON object"}), 400
+
+    user_id = data["user_id"]
+    hackathon_id = data["hackathon_id"]
+
+    is_userid = user_id == int(user_id)
+    is_hackathon_id = hackathon_id == int(hackathon_id)
+
+    if not (is_userid and is_hackathon_id):
+        return jsonify(
+            {
+                "message": "Provide a valid integer user_id and hackathon_id"
+            }), 200
+
+    user = User.query.filter_by(id=user_id).first()
+    hackathon = Hackathon.query.filter_by(id=hackathon_id).first()
+
+    if user is None or hackathon is None:
+        return jsonify(
+            {
+                "error": "User or Hackathon or both not Found! Wrong Id(s)."
+            }), 400
+
+    if user.is_admin:
+        return jsonify(
+            {
+                "error": "admins are not enrolled in any hackathons"
+            }), 400
+
+    user.participated_hackathons.remove(hackathon)
+    db.session.commit()
+
+    return jsonify(
+        {
+            "message": f"{user.name} unenrolled from {hackathon.title}"
+        }), 200
 
 
 if __name__ == '__main__':
