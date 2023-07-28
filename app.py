@@ -45,17 +45,20 @@ def allowed_file(filename):
 
 
 def get_img_url(folder_name, filename):
-    return url_for('static', filename=f"uploads/{folder_name}/{filename}", _external=True)
+    return url_for(
+        'static', filename=f"uploads/{folder_name}/{filename}", _external=True)
 
 
 @app.route('/uploads/bg_imgs/<filename>', methods=['GET'])
 def get_bg_image(filename):
-    return send_from_directory(os.path.join(app.config['UPLOAD_FOLDER'], 'bg_imgs'), filename)
+    return send_from_directory(
+        os.path.join(app.config['UPLOAD_FOLDER'], 'bg_imgs'), filename)
 
 
 @app.route('/uploads/hakthon_imgs/<filename>', methods=['GET'])
 def get_hakthon_image(filename):
-    return send_from_directory(os.path.join(app.config['UPLOAD_FOLDER'], 'hakthon_imgs'), filename)
+    return send_from_directory(
+        os.path.join(app.config['UPLOAD_FOLDER'], 'hakthon_imgs'), filename)
 
 
 @app.route('/api/users', methods=["GET"])
@@ -148,7 +151,13 @@ def add_hackathon():
     hakthon_img = request.files['hakthon_img']
 
     # check if required data is provided
-    if not (title and start_datetime and end_datetime and bg_image and hakthon_img):
+    if not (
+            title and
+            start_datetime and
+            end_datetime and
+            bg_image and
+            hakthon_img):
+
         data = {
             "title": "required",
             "start_datetime": "required",
@@ -190,7 +199,11 @@ def add_hackathon():
         )
         db.session.add(new_hackathon)
         db.session.commit()
-        return jsonify({"message": f"{new_hackathon.title} added id = {new_hackathon.id}"}), 201
+        return jsonify(
+            {
+                "message":
+                f"{new_hackathon.title} added id = {new_hackathon.id}"
+            }), 201
     else:
         return jsonify({"error": "Allowed file types are pdf, png, jpeg"}), 400
 
@@ -217,6 +230,46 @@ def get_user_hackathons(user_id):
         hackathons_list.append(data)
 
     return jsonify(hackathons_list), 200
+
+
+@app.route('/api/participate', methods=['POST'])
+def to_participate():
+    data = request.get_json()
+
+    user_id = data["user_id"]
+    hackathon_id = data["hackathon_id"]
+
+    if not (user_id and hackathon_id):
+        return jsonify({"error": "provide both user_id and hackathon_id"}), 200
+
+    user = User.query.filter_by(id=user_id).first()
+    hackathon = Hackathon.query.filter_by(id=hackathon_id).first()
+
+    if user is None or hackathon is None:
+        return jsonify(
+            {
+                "error": "User or Hackathon or both not Found! Wrong Id(s)."
+            }), 400
+
+    # if hackathon is None:
+    #     return jsonify({"error": "Hackathon Not Found! Wrong Id."}), 400
+
+    # check if user is admin
+    if user.is_admin:
+        return jsonify({"error": "admins cannot participate"}), 400
+
+    # is user already enrolled in hackathon
+    if hackathon in user.participated_hackathons:
+        return jsonify({
+            "error": "User already in participating in this hackathon"
+        }), 400
+
+    # add user to list of hackathons
+    user.participated_hackathons.append(hackathon)
+    db.session.commit()
+
+    return jsonify(
+        {"message": f"{user.name} enrolled in {hackathon.title}"}), 200
 
 
 if __name__ == '__main__':
