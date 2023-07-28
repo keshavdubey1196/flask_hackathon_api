@@ -117,3 +117,120 @@ user.orders[0].products  # List products from the first order
 
 p1 = Product.query.first()
 p1.users  # List all users who have bought this product, eg [<user1>, <user2>]
+
+
+
+
+
+import base64
+
+
+        data = {
+            "id": hackathon.id,
+            "title": hackathon.title,
+            "description": hackathon.description,
+            "bg_image": get_base64_image('bg_imgs', hackathon.bg_image),
+            "hakthon_img": get_base64_image('hakthon_imgs', hackathon.hakthon_img),
+            "submission_type": hackathon.submission_type,
+            "rewards": hackathon.rewards,
+            "created_at": hackathon.created_at,
+            "start_datetime": hackathon.start_datetime,
+            "end_datetime": hackathon.end_datetime,
+            "creator_id": hackathon.creator_id,
+        }
+        hackathons_list.append(data)
+    return jsonify(hackathons_list), 200
+
+# def get_base64_image(folder_name, filename):
+#     folder_path = os.path.join(app.config['UPLOAD_FOLDER'], folder_name)
+#     image_path = os.path.join(folder_path, filename)
+#     with open(image_path, "rb") as f:
+#         encoded_img = base64.b64encode(f.read()).decode("utf-8")
+#     return encoded_img
+
+
+
+from flask import  send_from_directory
+def get_img_url(folder_name, filename):
+    return send_from_directory(os.path.join(app.config['UPLOAD_FOLDER'], folder_name), filename)
+
+
+
+
+@app.route('/api/gethackathons', methods=["GET"])
+def get_hackathons():
+    hackathons = Hackathon.query.all()
+    hackathons_list = []
+
+    for hackathon in hackathons:
+        data = {
+            "id": hackathon.id,
+            "title": hackathon.title,
+            "description": hackathon.description,
+            "bg_image": get_img_url('bg_imgs', hackathon.bg_image),
+            "hakthon_img": get_img_url('hakthon_imgs', hackathon.hakthon_img),
+            "submission_type": hackathon.submission_type,
+            "rewards": hackathon.rewards,
+            "created_at": hackathon.created_at,
+            "start_datetime": hackathon.start_datetime.isoformat() if hackathon.start_datetime else None,
+            "end_datetime": hackathon.end_datetime.isoformat() if hackathon.start_datetime else None,
+            "creator_id": hackathon.creator_id,
+        }
+        hackathons_list.append(data)
+    return jsonify(hackathons_list), 200
+
+
+
+@app.route('/', methods=['POST'])
+def upload_file():
+    if request.method == 'POST':
+
+        if 'file' not in request.files:
+            flash('No file part')
+            return redirect(request.url)
+
+        file = request.files['file']
+
+        if file.filename == '':
+            flash('No file selected for uploading')
+            return redirect(request.url)
+
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            flash('File successfully uploaded')
+            return redirect('/')
+        else:
+            flash('Allowed file types are txt, pdf, png, jpg, jpeg, gif')
+            return redirect(request.url)
+
+
+if __name__ == "__main__":
+    app.run(host='127.0.0.1',port=5000)
+
+
+
+
+# API endpoint to get all hackathons
+@app.route('/api/gethackathons', methods=['GET'])
+def get_hackathons():
+    hackathons_data = Hackathon.query.all()
+    hackathons_list = []
+
+    for hackathon in hackathons_data:
+        data = {
+            "id": hackathon.id,
+            "title": hackathon.title,
+            "description": hackathon.description,
+            "bg_image": f"/uploads/bg_imgs/{hackathon.bg_image}",
+            "hakthon_img": f"/uploads/hakthon_imgs/{hackathon.hakthon_img}",
+            "submission_type": hackathon.submission_type,
+            "rewards": hackathon.rewards,
+            "created_at": hackathon.created_at,
+            "start_datetime": hackathon.start_datetime,
+            "end_datetime": hackathon.end_datetime,
+            "creator_id": hackathon.creator_id
+        }
+        hackathons_list.append(data)
+
+    return jsonify(hackathons_list), 200

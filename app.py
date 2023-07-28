@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, url_for, send_from_directory
 from models import db, init_db
 from config import DATABASE_URI
 from dotenv import load_dotenv
@@ -12,7 +12,7 @@ from werkzeug.utils import secure_filename
 
 load_dotenv()
 
-app = Flask(__name__)
+app = Flask(__name__, static_url_path='/static', static_folder='/static')
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URI
 app.secret_key = os.environ['SECRET_KEY']
 
@@ -37,7 +37,25 @@ init_db(app)
 
 
 def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    is_dot_in_filename = '.' in filename
+    if_ext_in_allowed_extensions = filename.rsplit(
+        '.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+    return if_ext_in_allowed_extensions and is_dot_in_filename
+
+
+def get_img_url(folder_name, filename):
+    return url_for('static', filename=f"uploads/{folder_name}/{filename}", _external=True)
+
+
+@app.route('/uploads/bg_imgs/<filename>', methods=['GET'])
+def get_bg_image(filename):
+    return send_from_directory(os.path.join(app.config['UPLOAD_FOLDER'], 'bg_imgs'), filename)
+
+
+@app.route('/uploads/hakthon_imgs/<filename>', methods=['GET'])
+def get_hakthon_image(filename):
+    return send_from_directory(os.path.join(app.config['UPLOAD_FOLDER'], 'hakthon_imgs'), filename)
 
 
 @app.route('/api/users', methods=["GET"])
@@ -130,7 +148,7 @@ def add_hackathon():
     hakthon_img = request.files['hakthon_img']
 
     # check if required data is provided
-    if not title or not start_datetime or not end_datetime or not bg_image or not hakthon_img:
+    if not (title and start_datetime and end_datetime and bg_image and hakthon_img):
         data = {
             "title": "required",
             "start_datetime": "required",
@@ -141,10 +159,10 @@ def add_hackathon():
         }
         return jsonify(data, 400)
 
-    if bg_image.filename or hakthon_img.filename == "":
+    if (bg_image.filename == "") or (hakthon_img.filename == ""):
         # print(bg_image.filename)
         # print(hakthon_img.filename)
-        return jsonify({"error": "bg_image and hakthon_img must have filename"}), 400
+        return jsonify({"error": "images provided must have filename"}), 400
 
     allowed = allowed_file(bg_image.filename) and allowed_file(
         hakthon_img.filename)
@@ -172,10 +190,34 @@ def add_hackathon():
         )
         db.session.add(new_hackathon)
         db.session.commit()
-        return jsonify({"message": f"{new_hackathon.title} added!"}), 201
+        return jsonify({"message": f"{new_hackathon.title} added id = {new_hackathon.id}"}), 201
     else:
         return jsonify({"error": "Allowed file types are pdf, png, jpeg"}), 400
 
 
-if __name__ == "__main__":
+@app.route('/api/getuserhackathons/<int:user_id>', methods=['GET'])
+def get_user_hackathons(user_id):
+    user = User.query.filter_by(id=user_id).first()
+    hackathons_list = []
+
+    for hackathon in user.created_hackathons:
+        data = {
+            "id": hackathon.id,
+            "title": hackathon.title,
+            "description": hackathon.description,
+            "bg_image": f"/uploads/bg_imgs/{hackathon.bg_image}",
+            "hakthon_img": f"/uploads/hakthon_imgs/{hackathon.hakthon_img}",
+            "submission_type": hackathon.submission_type,
+            "rewards": hackathon.rewards,
+            "created_at": hackathon.created_at,
+            "start_datetime": hackathon.start_datetime,
+            "end_datetime": hackathon.end_datetime,
+            "creator_id": hackathon.creator_id
+        }
+        hackathons_list.append(data)
+
+    return jsonify(hackathons_list), 200
+
+
+if __name__ == '__main__':
     app.run()
