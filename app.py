@@ -5,7 +5,7 @@ from config import DATABASE_URI
 from dotenv import load_dotenv
 import os
 from flask_migrate import Migrate
-from models import User, Hackathon
+from models import User, Hackathon, Submission
 import bcrypt
 import ast
 from werkzeug.utils import secure_filename
@@ -21,7 +21,8 @@ app.secret_key = os.environ['SECRET_KEY']
 UPLOAD_FOLDER = os.path.join(app.root_path, 'uploads')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-ALLOWED_EXTENSIONS = set(['pdf', 'png', 'jpg', 'jpeg'])
+# ALLOWED_IMG_EXTENSIONS = set(['jpg', 'jpeg', 'png'])
+# ALLOWED_FILE_EXTENSIONS = set(['pdf', 'txt'])
 
 # create folders if they don't exist in project
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'bg_imgs'), exist_ok=True)
@@ -37,12 +38,15 @@ migrate = Migrate(app, db)
 init_db(app)
 
 
-def allowed_file(filename):
-    is_dot_in_filename = '.' in filename
-    if_ext_in_allowed_extensions = filename.rsplit(
-        '.', 1)[1].lower() in ALLOWED_EXTENSIONS
+def allowed_files(filename, allowd_exts):
+    try:
+        is_dot_in_filename = '.' in filename
+        if_ext_in_allowed_exts = filename.rsplit(
+            '.', 1)[1].lower() in allowd_exts
 
-    return if_ext_in_allowed_extensions and is_dot_in_filename
+        return if_ext_in_allowed_exts and is_dot_in_filename
+    except Exception:
+        return False
 
 
 def get_img_url(folder_name, filename):
@@ -147,7 +151,7 @@ def add_hackathon():
 
     title = data['title']
     description = data.get('description', 'OK')
-    submission_type = data.get('submission_type', 'File')
+    submission_type = data.get('submission_type', 'file')
     rewards = data.get('rewards', 500)
     start_datetime = data['start_datetime']
     end_datetime = data['end_datetime']
@@ -178,8 +182,8 @@ def add_hackathon():
         # print(hakthon_img.filename)
         return jsonify({"error": "images provided must have filename"}), 400
 
-    allowed = allowed_file(bg_image.filename) and allowed_file(
-        hakthon_img.filename)
+    allowed = allowed_files(bg_image.filename, ['jpeg', 'jpg', 'png']) and \
+        allowed_files(hakthon_img.filename, ['jpeg', 'jpg', 'png'])
 
     if allowed:
         bg_image_filename = secure_filename(bg_image.filename)
@@ -210,7 +214,10 @@ def add_hackathon():
                 f"{new_hackathon.title} added id = {new_hackathon.id}"
             }), 201
     else:
-        return jsonify({"error": "Allowed file types are pdf, png, jpeg"}), 400
+        return jsonify(
+            {
+                "error": "Allowed image types are jpg, jpeg, png"
+            }), 400
 
 
 @app.route('/api/getuserhackathons/<int:user_id>', methods=['GET'])
@@ -356,6 +363,104 @@ def unenroll():
         {
             "message": f"{user.name} unenrolled from {hackathon.title}"
         }), 200
+
+
+@app.route('/api/submission', methods=['POST'])
+def submission():
+    data = request.form
+
+    if not data:
+        return jsonify({"error": "Empty form sent"}, 400)
+
+    user_id = data['user_id']
+    hackathon_id = data['hackathon_id']
+    file = request.files['file']
+    url = data.get('url', "None")
+
+    # check if all required fields are provided
+    if not (user_id and hackathon_id and (file and url)):
+        return jsonify(
+            {
+                "error":
+                "user_id,hackathon_id and either file or url is required!"
+            }, 400)
+
+    user = User.query.filter_by(id=user_id).first()
+    hackathon = Hackathon.query.filter_by(id=hackathon_id).first()
+
+    if not user or not hackathon:
+        return jsonify(
+            {
+                "error": "user or hackathon not found. Wrong id(s) provided"
+            }, 400)
+
+    # check if user is admin
+    if user.is_admin:
+        return jsonify({"error": "admins cannot submit or participate"}, 400)
+
+    # existing submisssion
+    existing_submission = Submission.query.filter_by(
+        user_id=user_id, hackathon_id=hackathon_id).first()
+    if existing_submission:
+        return jsonify(
+            {
+                "error": "User already have submitted on this hackathon"
+            }, 409)
+
+    if not allowed_files(file.filename, ['pdf', 'txt', 'png', 'jpg', 'jpeg']):
+        return jsonify(
+            {
+                "error":
+                "Invalid file type. Allowed are jpg, jpeg, pdf, png, pdf, txt"
+            }, 400)
+
+    sub_type = hackathon.submission_type.lower()
+
+    if sub_type == "file":
+        if not allowed_files(file.filename, ['pdf', 'txt']):
+            msg = "Invalid file type. Allowed are pdf and txt."
+            return jsonify({"error": msg}, 400)
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(
+            app.config['UPLOAD_FOLDER'], "files", filename)
+        file.save(file_path)
+
+        new_submission = Submission(
+            file=filename,
+            url=url,
+            user_id=user_id,
+            hackathon_id=hackathon_id
+        )
+
+    elif sub_type == "image":
+        if not allowed_files(file.filename, ['jpeg', 'png', 'jpg']):
+            msg = "Invalid image type. Allowed are jpg,jpeg & png."
+            return jsonify({"error": msg}, 400)
+
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(
+            app.config['UPLOAD_FOLDER'], "s_imgs", filename)
+        file.save(file_path)
+
+        new_submission = Submission(
+            file=filename,
+            url=url,
+            user_id=user_id,
+            hackathon_id=hackathon_id
+        )
+    else:
+        return jsonify(
+            {
+                "error": "invalid submission type for this hackathon"
+            }, 400)
+    db.session.add(new_submission)
+    db.session.commit()
+
+    return jsonify(
+        {
+            "message":
+            f"{user.name} submitted to {hackathon.title} suceessfully"
+        }, 200)
 
 
 if __name__ == '__main__':
